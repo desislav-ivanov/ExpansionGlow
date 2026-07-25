@@ -15,8 +15,44 @@ local TIER_LABEL = {
 ns.TIER_ORDER = TIER_ORDER
 ns.TIER_LABEL = TIER_LABEL
 
+-- One colour per past expansion, for the "expansion" mode. Chosen to stay
+-- distinguishable from each other rather than to match expansion branding,
+-- since telling two of them apart in a bag is the whole point. Indices are
+-- expacIDs: 0 Classic through 11 Midnight.
+local EXPANSION_PALETTE = {
+  [0]  = {0.85, 0.82, 0.66}, -- Classic
+  [1]  = {0.55, 0.78, 0.25}, -- Burning Crusade
+  [2]  = {0.56, 0.84, 0.95}, -- Wrath of the Lich King
+  [3]  = {0.90, 0.42, 0.18}, -- Cataclysm
+  [4]  = {0.20, 0.75, 0.55}, -- Mists of Pandaria
+  [5]  = {0.66, 0.35, 0.20}, -- Warlords of Draenor
+  [6]  = {0.64, 0.36, 0.85}, -- Legion
+  [7]  = {0.88, 0.30, 0.42}, -- Battle for Azeroth
+  [8]  = {0.48, 0.55, 1.00}, -- Shadowlands
+  [9]  = {0.25, 0.77, 0.69}, -- Dragonflight
+  [10] = {0.91, 0.77, 0.28}, -- The War Within
+  [11] = {0.43, 0.36, 0.85}, -- Midnight
+}
+local EXPANSION_FALLBACK = {0.60, 0.60, 0.66}
+
+-- Expansions older than the current one, newest first.
+function ns.PastExpansions()
+  local ids = {}
+  for id = LE_EXPANSION_LEVEL_CURRENT - 1, 0, -1 do
+    ids[#ids + 1] = id
+  end
+  return ids
+end
+
+function ns.ExpansionName(id)
+  return _G["EXPANSION_NAME" .. id] or ("Expansion " .. id)
+end
+
 local DEFAULTS = {
   enabled = true,
+  -- "age" buckets items into the four tiers below; "expansion" gives every
+  -- past expansion its own colour.
+  mode = "age",
   style = "tint",   -- "tint" colours the icon, "border" outlines the slot
   tintAlpha = 0.65, -- base opacity of the tint style
   thickness = 2,    -- border style: outline width in pixels
@@ -52,31 +88,58 @@ end
 -- itemIDs whose data was not cached yet the first time we looked at them.
 local awaitingItemData = {}
 
-local function ResolveTier(itemID)
+local function ResolveExpansion(itemID)
   local expacID = db.itemExpansion[itemID]
+  if expacID ~= nil then
+    return expacID
+  end
 
+  -- 15th return of GetItemInfo is expacID; nil until the client caches the item.
+  expacID = select(15, C_Item.GetItemInfo(itemID))
   if expacID == nil then
-    -- 15th return of GetItemInfo is expacID; nil until the client caches the item.
-    expacID = select(15, C_Item.GetItemInfo(itemID))
-    if expacID == nil then
-      if not awaitingItemData[itemID] then
-        awaitingItemData[itemID] = true
-        C_Item.RequestLoadItemDataByID(itemID)
-      end
-      return nil
+    if not awaitingItemData[itemID] then
+      awaitingItemData[itemID] = true
+      C_Item.RequestLoadItemDataByID(itemID)
     end
-    db.itemExpansion[itemID] = expacID
+    return nil
+  end
+
+  db.itemExpansion[itemID] = expacID
+  return expacID
+end
+
+-- Returns the settings table that decides this item's colour, plus a key
+-- identifying it so the widgets can skip recolouring when nothing changed.
+-- Returns nil for current-expansion items and for anything switched off.
+local function ResolveMarker(itemID)
+  local expacID = ResolveExpansion(itemID)
+  if expacID == nil or expacID >= LE_EXPANSION_LEVEL_CURRENT then
+    return nil
+  end
+
+  if db.mode == "expansion" then
+    local settings = db.expansions[expacID]
+    if settings and settings.enabled then
+      return settings, "x" .. expacID
+    end
+    return nil
   end
 
   local age = LE_EXPANSION_LEVEL_CURRENT - expacID
+  local tier
   if age == 1 then
-    return "prev1"
+    tier = "prev1"
   elseif age == 2 then
-    return "prev2"
+    tier = "prev2"
   elseif age == 3 then
-    return "prev3"
-  elseif age >= 4 then
-    return "ancient"
+    tier = "prev3"
+  else
+    tier = "ancient"
+  end
+
+  local settings = db.tiers[tier]
+  if settings.enabled then
+    return settings, tier
   end
   return nil
 end
@@ -169,7 +232,7 @@ local function LayoutBorder(border, button)
   right:SetWidth(thickness)
 end
 
-local function ShowTint(button, widgets, tier)
+local function ShowTint(button, widgets, settings, key)
   if widgets.border then
     widgets.border:Hide()
   end
@@ -182,18 +245,18 @@ local function ShowTint(button, widgets, tier)
     return
   end
 
-  -- A tier's stored alpha is a weight, not a final opacity: the style supplies
-  -- the base. That keeps ancient items subtler than the rest in both styles.
-  if widgets.tintTier ~= tier or widgets.tintAlpha ~= db.tintAlpha then
-    widgets.tintTier, widgets.tintAlpha = tier, db.tintAlpha
-    local color = db.tiers[tier].color
+  -- A colour's stored alpha is a weight, not a final opacity: the style
+  -- supplies the base. That keeps ancient items subtler in both styles.
+  if widgets.tintKey ~= key or widgets.tintAlpha ~= db.tintAlpha then
+    widgets.tintKey, widgets.tintAlpha = key, db.tintAlpha
+    local color = settings.color
     tint:SetColorTexture(color[1], color[2], color[3], color[4] * db.tintAlpha)
   end
 
   tint:Show()
 end
 
-local function ShowBorder(button, widgets, tier)
+local function ShowBorder(button, widgets, settings, key)
   if widgets.tint then
     widgets.tint:Hide()
   end
@@ -205,9 +268,9 @@ local function ShowBorder(button, widgets, tier)
   end
   LayoutBorder(border, button)
 
-  if widgets.borderTier ~= tier then
-    widgets.borderTier = tier
-    local color = db.tiers[tier].color
+  if widgets.borderKey ~= key then
+    widgets.borderKey = key
+    local color = settings.color
     for _, edge in ipairs(border.edges) do
       edge:SetColorTexture(color[1], color[2], color[3], color[4])
     end
@@ -216,12 +279,12 @@ local function ShowBorder(button, widgets, tier)
   border:Show()
 end
 
-local function ShowMarker(button, tier)
+local function ShowMarker(button, settings, key)
   local widgets = GetWidgets(button)
   if db.style == "border" then
-    ShowBorder(button, widgets, tier)
+    ShowBorder(button, widgets, settings, key)
   else
-    ShowTint(button, widgets, tier)
+    ShowTint(button, widgets, settings, key)
   end
 end
 
@@ -290,9 +353,13 @@ function ns.UpdateButton(button)
 
   trackedButtons[button] = true
 
-  local tier = db.enabled and ResolveTier(itemID)
-  if tier and db.tiers[tier].enabled then
-    ShowMarker(button, tier)
+  local settings, key
+  if db.enabled then
+    settings, key = ResolveMarker(itemID)
+  end
+
+  if settings then
+    ShowMarker(button, settings, key)
   else
     HideMarker(button)
   end
@@ -317,13 +384,29 @@ function ns.Restyle()
   for button in pairs(trackedButtons) do
     local widgets = button.ExpansionGlow
     if widgets then
-      widgets.tintTier, widgets.tintAlpha, widgets.borderTier = nil, nil, nil
+      widgets.tintKey, widgets.tintAlpha, widgets.borderKey = nil, nil, nil
       if widgets.border then
         widgets.border.outset, widgets.border.thickness = nil, nil
       end
     end
   end
   ns.RefreshAll()
+end
+
+-- The set of past expansions grows every time one ships, so these defaults are
+-- filled in at load rather than written into DEFAULTS. Existing colours are
+-- left alone; only expansions the user has never seen get one.
+local function EnsureExpansionDefaults()
+  db.expansions = db.expansions or {}
+  for id = 0, LE_EXPANSION_LEVEL_CURRENT - 1 do
+    if not db.expansions[id] then
+      local palette = EXPANSION_PALETTE[id] or EXPANSION_FALLBACK
+      db.expansions[id] = {
+        enabled = true,
+        color = {palette[1], palette[2], palette[3], 1.00},
+      }
+    end
+  end
 end
 
 -- Restores every setting while keeping the learned item expansions, which are
@@ -335,6 +418,7 @@ function ns.ResetDefaults()
     end
   end
   CopyDefaults(DEFAULTS, db)
+  EnsureExpansionDefaults()
   ns.Restyle()
 end
 
@@ -352,6 +436,7 @@ events:SetScript("OnEvent", function(_, event, arg1, success)
     CopyDefaults(DEFAULTS, EXPANSIONGLOW_CONFIG)
     db = EXPANSIONGLOW_CONFIG
     ns.db = db
+    EnsureExpansionDefaults()
     events:UnregisterEvent("ADDON_LOADED")
     ns.RefreshAll()
   elseif event == "GET_ITEM_INFO_RECEIVED" then
@@ -379,11 +464,23 @@ end
 
 local function Status()
   Print(db.enabled and "enabled" or "disabled")
-  for _, tier in ipairs(TIER_ORDER) do
-    local settings = db.tiers[tier]
-    local hex = ToHex(settings.color)
-    Print(("  %s - %s - %s - |cff%s#%s|r"):format(
-      tier, TIER_LABEL[tier], settings.enabled and "on" or "off", hex, hex))
+  if db.mode == "expansion" then
+    Print("  mode: one colour per past expansion")
+    for _, id in ipairs(ns.PastExpansions()) do
+      local settings = db.expansions[id]
+      local hex = ToHex(settings.color)
+      Print(("  %s - %s - |cff%s#%s|r%s"):format(
+        ns.ExpansionName(id), settings.enabled and "on" or "off", hex, hex,
+        id == 0 and "  (also covers items with no expansion data)" or ""))
+    end
+  else
+    Print("  mode: age tiers")
+    for _, tier in ipairs(TIER_ORDER) do
+      local settings = db.tiers[tier]
+      local hex = ToHex(settings.color)
+      Print(("  %s - %s - %s - |cff%s#%s|r"):format(
+        tier, TIER_LABEL[tier], settings.enabled and "on" or "off", hex, hex))
+    end
   end
   local cached = 0
   for _ in pairs(db.itemExpansion) do
@@ -431,6 +528,14 @@ SlashCmdList.EXPANSIONGLOW = function(input)
     else
       Print("expected a hex colour, e.g. /expglow " .. command .. " 33cc33")
     end
+  elseif command == "mode" then
+    if rest == "age" or rest == "expansion" then
+      db.mode = rest
+      ns.Restyle()
+      Print("mode set to " .. rest)
+    else
+      Print("mode expects age or expansion")
+    end
   elseif command == "style" then
     if rest == "tint" or rest == "border" then
       db.style = rest
@@ -470,6 +575,7 @@ SlashCmdList.EXPANSIONGLOW = function(input)
     Print("  /expglow toggle                             all markers on or off")
     Print("  /expglow prev1|prev2|prev3|ancient          toggle that tier")
     Print("  /expglow prev1|prev2|prev3|ancient <hex>    set that tier's colour")
+    Print("  /expglow mode age|expansion                 four age tiers, or one colour per expansion")
     Print("  /expglow style tint|border                  colour the icon, or outline the slot")
     Print("  /expglow alpha <0-1>                        tint strength")
     Print("  /expglow thickness <0-10>                   border width in pixels")

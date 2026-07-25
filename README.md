@@ -27,6 +27,25 @@ Because the tiers are worked out relative to the live expansion rather than
 being hardcoded, everything re-grades itself the day a new expansion launches.
 Nothing to update, nothing to reset.
 
+## Or one colour per expansion
+
+If four tiers is too coarse, switch to per-expansion colouring and every past
+expansion gets its own colour instead. Battle for Azeroth, Legion, Warlords and
+everything older stop sharing the single "ancient" colour and become
+individually identifiable.
+
+The list builds itself from the expansions the client knows about, using the
+game's own localised expansion names, so it grows on its own as new ones ship.
+Current-expansion items stay unmarked either way.
+
+**One caveat worth knowing before you rely on it.** The game reports no
+expansion at all for a large number of items, and those are indistinguishable
+from genuine Classic items — both arrive as expansion `0`. In tier mode they
+land under "four or more expansions back", which is at least vaguely true. In
+per-expansion mode they land under *Classic* specifically, which is a much more
+concrete claim than the data supports. The options panel says so next to the
+list, and you can switch that one colour off if it turns out to be noisy.
+
 ## Two styles
 
 - **Tint** (default) — washes the item icon with the tier colour.
@@ -37,11 +56,15 @@ Nothing to update, nothing to reset.
 
 An in-game panel under Escape → Options → AddOns → ExpansionGlow, or `/expglow`:
 
-- a colour picker for each of the four tiers
+- pick between age tiers and per-expansion colouring
+- a colour picker for every tier and every expansion
 - tint opacity
 - outline width and distance from the slot
-- switch any individual tier off
+- switch any individual tier or expansion off
 - reset to defaults
+
+The panel shows the controls that apply to what you have selected, so the
+expansion list and the outline sliders appear only when they do something.
 
 ### Slash commands
 
@@ -52,6 +75,7 @@ An in-game panel under Escape → Options → AddOns → ExpansionGlow, or `/exp
 | `/expglow toggle` | all markers on or off |
 | `/expglow prev1\|prev2\|prev3\|ancient` | toggle that tier |
 | `/expglow prev1\|prev2\|prev3\|ancient <hex>` | set that tier's colour, e.g. `33cc33` |
+| `/expglow mode age\|expansion` | four age tiers, or one colour per expansion |
 | `/expglow style tint\|border` | colour the icon, or outline the slot |
 | `/expglow alpha <0-1>` | tint strength |
 | `/expglow thickness <0-10>` | outline width in pixels |
@@ -80,9 +104,11 @@ correct across an expansion launch.
 
 ## A note on untagged items
 
-Blizzard leaves a large number of items with no expansion tag at all, and those
-read as "four or more expansions back". If that ends up noisier than you want,
-switch that tier off in the options and the other three keep working.
+Blizzard leaves a large number of items with no expansion tag at all. In tier
+mode those read as "four or more expansions back"; in per-expansion mode they
+are lumped in with Classic, since the game reports the same value for both. If
+that ends up noisier than you want, switch the affected colour off and the rest
+keep working.
 
 ## Installation
 

@@ -7,6 +7,10 @@ local addonName, ns = ...
 -- Widgets are created once at load. Values are read from the saved settings in
 -- Refresh, which runs on show: this file loads before ADDON_LOADED, so there is
 -- no db to read from yet at creation time.
+--
+-- Sections appear and disappear with the selected mode and style, so positions
+-- cannot be baked in at creation. Every widget belongs to a block, and Layout
+-- walks the blocks top to bottom placing only the visible ones.
 
 local panel = CreateFrame("Frame")
 panel.name = addonName
@@ -15,31 +19,51 @@ panel.name = addonName
 -- fire as a side effect of SetValue/SetChecked do not write straight back.
 local refreshing = false
 
+local MARGIN, INDENT, SUB_INDENT, ROW_INDENT = 16, 14, 18, 40
+local COLUMN_WIDTH = 230
+
 local controls = {}
+local blocks = {}
 
--- Every widget is positioned against the panel itself from a running vertical
--- cursor. Chaining each row off the previous one instead makes indents
--- accumulate down the panel, staircasing the rows to the right.
-local MARGIN, INDENT, SUB_INDENT = 16, 14, 18
-local cursor = -MARGIN
-
-local function Place(frame, x, gap, height)
-  cursor = cursor - gap
-  frame:SetPoint("TOPLEFT", panel, "TOPLEFT", x, cursor)
-  cursor = cursor - height
+local function AddBlock(block)
+  blocks[#blocks + 1] = block
+  return block
 end
 
-local function Label(text, font, x, gap, height)
+local function Layout()
+  local y = -MARGIN
+  for _, block in ipairs(blocks) do
+    local visible = not block.visible or block.visible()
+    for _, frame in ipairs(block.frames) do
+      frame:SetShown(visible)
+    end
+    if visible then
+      y = y - (block.gap or 0)
+      block.place(y)
+      y = y - block.height
+    end
+  end
+end
+
+local function InAgeMode() return ns.db.mode ~= "expansion" end
+local function InExpansionMode() return ns.db.mode == "expansion" end
+local function InBorderStyle() return ns.db.style == "border" end
+
+-- Widget constructors ---------------------------------------------------------
+
+local function NewLabel(text, font, width)
   local label = panel:CreateFontString(nil, "ARTWORK", font)
   label:SetText(text)
-  Place(label, x, gap, height)
+  label:SetJustifyH("LEFT")
+  if width then
+    label:SetWidth(width)
+  end
   return label
 end
 
-local function Checkbox(text, tooltip, x, gap, onClick)
+local function NewCheckbox(text, tooltip, onClick)
   local box = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
   box:SetSize(24, 24)
-  Place(box, x, gap, 24)
   box.Text:SetText(text)
   box:SetScript("OnClick", function(self)
     if not refreshing then
@@ -60,12 +84,9 @@ end
 
 -- MinimalSliderWithSteppersTemplate is the current settings slider;
 -- OptionsSliderTemplate now lives in Blizzard's DeprecatedTemplates.
-local function Slider(text, minValue, maxValue, steps, decimals, onChanged)
-  Label(text, "GameFontHighlightSmall", SUB_INDENT, 10, 16)
-
+local function NewSlider(minValue, maxValue, steps, decimals, onChanged)
   local slider = CreateFrame("Frame", nil, panel, "MinimalSliderWithSteppersTemplate")
   slider:SetWidth(260)
-  Place(slider, SUB_INDENT, 4, 28)
 
   local format = "%." .. decimals .. "f"
   local scale = 10 ^ decimals
@@ -92,11 +113,11 @@ end
 
 -- A plain button rather than ColorSwatchTemplate: that template is a Frame with
 -- propagateMouseInput, meant to be a visual inside a button, so it cannot take
--- the click itself.
-local function ColorSwatch(tier, rowAnchor)
+-- the click itself. getColor returns the live table so the swatch keeps working
+-- after a reset replaces it.
+local function NewColorSwatch(getColor)
   local swatch = CreateFrame("Button", nil, panel)
   swatch:SetSize(20, 20)
-  swatch:SetPoint("RIGHT", rowAnchor, "LEFT", -4, 0)
 
   local border = swatch:CreateTexture(nil, "BACKGROUND")
   border:SetAllPoints()
@@ -112,7 +133,7 @@ local function ColorSwatch(tier, rowAnchor)
   highlight:SetColorTexture(1, 1, 1, 0.25)
 
   swatch:SetScript("OnClick", function()
-    local color = ns.db.tiers[tier].color
+    local color = getColor()
 
     local function Apply(r, g, b)
       color[1], color[2], color[3] = r, g, b
@@ -128,86 +149,223 @@ local function ColorSwatch(tier, rowAnchor)
     })
   end)
 
+  swatch.getColor = getColor
   return swatch
+end
+
+-- Block helpers ---------------------------------------------------------------
+
+local function LabelBlock(text, font, gap, height, visible, indent)
+  local label = NewLabel(text, font)
+  AddBlock({
+    frames = {label}, gap = gap, height = height, visible = visible,
+    place = function(y) label:SetPoint("TOPLEFT", panel, "TOPLEFT", indent, y) end,
+  })
+  return label
+end
+
+local function CheckboxBlock(box, gap, visible, indent)
+  AddBlock({
+    frames = {box}, gap = gap, height = 24, visible = visible,
+    place = function(y) box:SetPoint("TOPLEFT", panel, "TOPLEFT", indent, y) end,
+  })
+  return box
+end
+
+local function SliderBlock(text, slider, gap, visible)
+  local label = NewLabel(text, "GameFontHighlightSmall")
+  AddBlock({
+    frames = {label, slider}, gap = gap, height = 16 + 4 + 28, visible = visible,
+    place = function(y)
+      label:SetPoint("TOPLEFT", panel, "TOPLEFT", SUB_INDENT, y)
+      slider:SetPoint("TOPLEFT", panel, "TOPLEFT", SUB_INDENT, y - 20)
+    end,
+  })
+  return slider
+end
+
+-- A colour row: swatch, then a checkbox whose label names the tier or expansion.
+local function ColorRow(labelText, getColor, onToggle)
+  local swatch = NewColorSwatch(getColor)
+  local box = NewCheckbox(labelText, nil, onToggle)
+  return {swatch = swatch, box = box}
 end
 
 -- Layout ----------------------------------------------------------------------
 
-Label(addonName, "GameFontNormalLarge", MARGIN, 0, 22)
-Label("Marks items in bags and the bank by how many expansions old they are.",
-  "GameFontHighlightSmall", MARGIN, 2, 16)
+LabelBlock(addonName, "GameFontNormalLarge", 0, 22, nil, MARGIN)
+LabelBlock("Marks items in bags and the bank by how many expansions old they are.",
+  "GameFontHighlightSmall", 2, 16, nil, MARGIN)
 
-controls.enabled = Checkbox("Enable " .. addonName, nil, INDENT, 10,
-  function(checked)
+controls.enabled = CheckboxBlock(
+  NewCheckbox("Enable " .. addonName, nil, function(checked)
     ns.db.enabled = checked
     ns.RefreshAll()
-  end)
+  end), 10, nil, INDENT)
 
-Label("Style", "GameFontNormal", MARGIN, 10, 18)
+-- Mode -----------------------------------------------------------------------
 
--- Two checkboxes acting as a radio pair: style is one value, but a pair of
--- labelled boxes names both options instead of hiding one behind "unchecked".
+LabelBlock("Colouring", "GameFontNormal", 10, 18, nil, MARGIN)
+
+local function SetMode(mode)
+  ns.db.mode = mode
+  controls.modeAge:SetChecked(mode == "age")
+  controls.modeExpansion:SetChecked(mode == "expansion")
+  Layout()
+  ns.Restyle()
+end
+
+controls.modeAge = CheckboxBlock(
+  NewCheckbox("By age, in four tiers",
+    "Groups everything by how many expansions back it is.",
+    function() SetMode("age") end), 2, nil, INDENT)
+
+controls.modeExpansion = CheckboxBlock(
+  NewCheckbox("By expansion, one colour each",
+    "Gives every past expansion its own colour.",
+    function() SetMode("expansion") end), 0, nil, INDENT)
+
+-- Style ----------------------------------------------------------------------
+
+LabelBlock("Style", "GameFontNormal", 12, 18, nil, MARGIN)
+
 local function SetStyle(style)
   ns.db.style = style
   controls.styleTint:SetChecked(style == "tint")
   controls.styleBorder:SetChecked(style == "border")
+  Layout()
   ns.Restyle()
 end
 
-controls.styleTint = Checkbox(
-  "Tint the item icon",
-  "Washes the icon art with the expansion colour.",
-  INDENT, 2, function() SetStyle("tint") end)
+controls.styleTint = CheckboxBlock(
+  NewCheckbox("Tint the item icon",
+    "Washes the icon art with the colour.",
+    function() SetStyle("tint") end), 2, nil, INDENT)
 
-controls.styleBorder = Checkbox(
-  "Outline the item slot",
-  "Draws a coloured border around the slot and leaves the icon untouched.",
-  INDENT, 0, function() SetStyle("border") end)
+controls.styleBorder = CheckboxBlock(
+  NewCheckbox("Outline the item slot",
+    "Draws a coloured border around the slot and leaves the icon untouched.",
+    function() SetStyle("border") end), 0, nil, INDENT)
 
-controls.tintAlpha = Slider("Tint opacity", 0.05, 1, 19, 2,
-  function(value)
+controls.tintAlpha = SliderBlock("Tint opacity",
+  NewSlider(0.05, 1, 19, 2, function(value)
     ns.db.tintAlpha = value
     ns.Restyle()
-  end)
+  end), 10, function() return not InBorderStyle() end)
 
-Label("Expansion colours", "GameFontNormal", MARGIN, 18, 18)
+-- Colours --------------------------------------------------------------------
 
--- Each row is a checkbox with its swatch hung off the checkbox's left edge, so
--- the swatches line up in a column without needing their own cursor maths.
+LabelBlock("Colours", "GameFontNormal", 14, 18, nil, MARGIN)
+
 controls.tiers = {}
 for index, tier in ipairs(ns.TIER_ORDER) do
-  local row = {}
-  row.enabled = Checkbox(ns.TIER_LABEL[tier], nil, INDENT + 26, index == 1 and 4 or 0,
+  local row = ColorRow(
+    ns.TIER_LABEL[tier],
+    function() return ns.db.tiers[tier].color end,
     function(checked)
       ns.db.tiers[tier].enabled = checked
       ns.RefreshAll()
     end)
-  row.swatch = ColorSwatch(tier, row.enabled)
+
+  AddBlock({
+    frames = {row.swatch, row.box}, gap = index == 1 and 4 or 0, height = 24,
+    visible = InAgeMode,
+    place = function(y)
+      row.swatch:SetPoint("TOPLEFT", panel, "TOPLEFT", INDENT + 4, y - 2)
+      row.box:SetPoint("TOPLEFT", panel, "TOPLEFT", ROW_INDENT, y)
+    end,
+  })
   controls.tiers[tier] = row
 end
 
-Label("Outline size", "GameFontNormal", MARGIN, 18, 18)
+-- Two columns, because the list grows by one every time an expansion ships and
+-- a single column would run off the bottom of the settings frame.
+controls.expansions = {}
+local pastExpansions = ns.PastExpansions()
+for index = 1, #pastExpansions, 2 do
+  local rowFrames, placers = {}, {}
 
-controls.thickness = Slider("Width in pixels", 1, 6, 5, 0,
-  function(value)
+  for column = 0, 1 do
+    local id = pastExpansions[index + column]
+    if id then
+      local label = ns.ExpansionName(id)
+      local row = ColorRow(
+        label,
+        function() return ns.db.expansions[id].color end,
+        function(checked)
+          ns.db.expansions[id].enabled = checked
+          ns.RefreshAll()
+        end)
+
+      local x = INDENT + 4 + column * COLUMN_WIDTH
+      rowFrames[#rowFrames + 1] = row.swatch
+      rowFrames[#rowFrames + 1] = row.box
+      placers[#placers + 1] = function(y)
+        row.swatch:SetPoint("TOPLEFT", panel, "TOPLEFT", x, y - 2)
+        row.box:SetPoint("TOPLEFT", panel, "TOPLEFT", x + 26, y)
+      end
+      controls.expansions[id] = row
+    end
+  end
+
+  AddBlock({
+    frames = rowFrames, gap = index == 1 and 4 or 0, height = 24,
+    visible = InExpansionMode,
+    place = function(y)
+      for _, place in ipairs(placers) do
+        place(y)
+      end
+    end,
+  })
+end
+
+-- The disclaimer the expansion mode needs: the client reports 0 both for real
+-- Classic items and for anything it has no expansion data for, and the two are
+-- indistinguishable, so the oldest colour is not a reliable claim.
+do
+  local disclaimer = NewLabel(
+    "Note: the game reports no expansion for a large number of items, and those are "
+    .. "indistinguishable from genuine " .. ns.ExpansionName(0) .. " items. Both end up "
+    .. "under " .. ns.ExpansionName(0) .. " above. Switch that one off if it is noisy.",
+    "GameFontDisableSmall", 470)
+  AddBlock({
+    frames = {disclaimer}, gap = 10, height = 34, visible = InExpansionMode,
+    place = function(y) disclaimer:SetPoint("TOPLEFT", panel, "TOPLEFT", MARGIN, y) end,
+  })
+end
+
+-- Outline sizing -------------------------------------------------------------
+
+LabelBlock("Outline size", "GameFontNormal", 14, 18, InBorderStyle, MARGIN)
+
+controls.thickness = SliderBlock("Width in pixels",
+  NewSlider(1, 6, 5, 0, function(value)
     ns.db.thickness = value
     ns.Restyle()
-  end)
+  end), 4, InBorderStyle)
 
-controls.outset = Slider("Distance outside the slot", 0, 6, 6, 0,
-  function(value)
+controls.outset = SliderBlock("Distance outside the slot",
+  NewSlider(0, 6, 6, 0, function(value)
     ns.db.outset = value
     ns.Restyle()
-  end)
+  end), 10, InBorderStyle)
 
-local reset = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-reset:SetSize(160, 24)
-Place(reset, MARGIN, 24, 24)
-reset:SetText("Reset to defaults")
-reset:SetScript("OnClick", function()
-  ns.ResetDefaults()
-  panel:Refresh()
-end)
+-- Reset ----------------------------------------------------------------------
+
+do
+  local reset = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+  reset:SetSize(160, 24)
+  reset:SetText("Reset to defaults")
+  reset:SetScript("OnClick", function()
+    ns.ResetDefaults()
+    panel:Refresh()
+  end)
+  AddBlock({
+    frames = {reset}, gap = 20, height = 24,
+    place = function(y) reset:SetPoint("TOPLEFT", panel, "TOPLEFT", MARGIN, y) end,
+  })
+  controls.reset = reset
+end
 
 -- Refresh ---------------------------------------------------------------------
 
@@ -220,6 +378,8 @@ function panel:Refresh()
   refreshing = true
 
   controls.enabled:SetChecked(db.enabled)
+  controls.modeAge:SetChecked(db.mode ~= "expansion")
+  controls.modeExpansion:SetChecked(db.mode == "expansion")
   controls.styleTint:SetChecked(db.style == "tint")
   controls.styleBorder:SetChecked(db.style == "border")
 
@@ -229,9 +389,17 @@ function panel:Refresh()
 
   for tier, row in pairs(controls.tiers) do
     local settings = db.tiers[tier]
-    row.enabled:SetChecked(settings.enabled)
+    row.box:SetChecked(settings.enabled)
     row.swatch.fill:SetColorTexture(settings.color[1], settings.color[2], settings.color[3])
   end
+
+  for id, row in pairs(controls.expansions) do
+    local settings = db.expansions[id]
+    row.box:SetChecked(settings.enabled)
+    row.swatch.fill:SetColorTexture(settings.color[1], settings.color[2], settings.color[3])
+  end
+
+  Layout()
 
   refreshing = false
 end
