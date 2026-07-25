@@ -1,0 +1,16 @@
+## Interface: 120007
+## Title: ExpansionGlow
+## Version: 0.1.0
+## Author: desislav-ivanov
+## Notes: Colours bag and bank items by how many expansions old they are.
+## X-License: All Rights Reserved
+## X-Website: https://github.com/desislav-ivanov/ExpansionGlow
+## SavedVariables: EXPANSIONGLOW_CONFIG
+## OptionalDeps: Baganator
+
+## Category-enUS: Inventory
+
+Core.lua
+Options.lua
+Blizzard.lua
+Baganator.lua

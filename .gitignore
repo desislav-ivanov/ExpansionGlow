@@ -1,0 +1,15 @@
+# Editors
+/.idea/
+/.vscode/
+*.swp
+
+# Packaged builds
+*.zip
+
+# Local publishing notes
+/PUBLISH.md
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
