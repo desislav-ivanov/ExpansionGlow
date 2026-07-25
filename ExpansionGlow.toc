@@ -1,7 +1,7 @@
 ## Interface: 120007
 ## Title: ExpansionGlow
 ## Version: 12.0.7
-## Author: desislav-ivanov
+## Author: Leanthe@TarrenMill
 ## Notes: Colours bag and bank items by how many expansions old they are.
 ## X-License: All Rights Reserved
 ## X-Website: https://github.com/desislav-ivanov/ExpansionGlow
