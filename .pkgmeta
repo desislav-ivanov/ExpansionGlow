@@ -1,0 +1,13 @@
+package-as: ExpansionGlow
+
+# No embedded libraries, so there is nothing to strip for a nolib build.
+enable-nolib-creation: no
+
+# Everything below is repository furniture. Without this list the packager zips
+# the repo root as-is and ships all of it inside the addon folder.
+# LICENSE is deliberately kept: the addon is All Rights Reserved, so the terms
+# travel with it.
+ignore:
+    - .gitignore
+    - README.md
+    - ExpansionGlow-logo-512.png
