@@ -32,6 +32,15 @@ local function NewNS()
   function ns.UpdateButtonWithItem(button, itemID)
     ns.calls[#ns.calls + 1] = {button = button, itemID = itemID, viaItem = true}
   end
+  -- Records the hook arguments verbatim. Whether those arguments mean "this
+  -- item", "explicitly empty" or "read the slot" is Core's decision and is
+  -- asserted in test_core.lua, so it must not be re-implemented here.
+  function ns.UpdateButtonFromQuality(button, quality, itemIDOrLink)
+    ns.calls[#ns.calls + 1] = {
+      button = button, quality = quality, itemIDOrLink = itemIDOrLink,
+      fromQuality = true,
+    }
+  end
   function ns.last() return ns.calls[#ns.calls] end
   return ns
 end
@@ -98,7 +107,8 @@ do
   local button = {}
   globalHooks.SetItemButtonQuality(button, 3, "|Hitem:101|h")
   check("Blizzard forwards the button to Core", ns.last().button, button)
-  check("Blizzard lets Core resolve the item", ns.last().viaItem, false)
+  check("Blizzard forwards the quality", ns.last().quality, 3)
+  check("Blizzard forwards the item it was handed", ns.last().itemIDOrLink, "|Hitem:101|h")
 
   -- The global fires for buttons that are not item buttons at all.
   local before = #ns.calls
@@ -143,8 +153,24 @@ do
   check("Baganator hooks a later item button",
     type(methodHooks[later] and methodHooks[later].SetItemButtonQuality), "function")
 
-  methodHooks[later].SetItemButtonQuality(later)
+  methodHooks[later].SetItemButtonQuality(later, 3, "|Hitem:101|h[Thing]|h")
   check("Baganator forwards the button to Core", ns.last().button, later)
+  check("Baganator forwards the item it was handed",
+    ns.last().itemIDOrLink, "|Hitem:101|h[Thing]|h")
+
+  -- Baganator binds its stacked "Empty" button to a real bag and slot, but
+  -- renders nothing when told to display empty even if that slot has contents
+  -- (ItemButton.lua: "Keep cache and display in sync"). Reading the slot
+  -- ourselves would paint an item onto a button showing an empty stack.
+  local emptyStack = {SetItemButtonQuality = function() end, bagID = 0, GetID = function() return 1 end}
+  containerItems["0:1"] = 101
+  listeners[1]({regionType = "ItemButton", region = emptyStack})
+  methodHooks[emptyStack].SetItemButtonQuality(emptyStack, nil, nil)
+  -- The hook args, not the bound slot, are what reach Core. That slot holds an
+  -- item; forwarding the args is what stops it being painted.
+  check("Baganator empty stack forwards no item", ns.last().itemIDOrLink, nil)
+  check("Baganator empty stack forwards no quality", ns.last().quality, nil)
+  check("Baganator empty stack goes through the quality path", ns.last().fromQuality, true)
 
   -- Hooking the same button twice would double every update.
   listeners[1]({regionType = "ItemButton", region = later})

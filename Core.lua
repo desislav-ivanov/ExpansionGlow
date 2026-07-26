@@ -401,6 +401,30 @@ function ns.UpdateButtonWithItem(button, itemID)
   ApplyToButton(button, itemID)
 end
 
+-- For SetItemButtonQuality hooks, where the arguments are what the button was
+-- just told to display.
+--
+-- Those arguments beat reading the container slot, because a button is not
+-- always showing its own slot. Baganator binds its stacked "empty slots" button
+-- to a real bag and slot yet deliberately draws nothing there, so reading that
+-- slot paints an item onto a button the user sees as empty.
+function ns.UpdateButtonFromQuality(button, quality, itemIDOrLink)
+  if not db then
+    return
+  end
+
+  if itemIDOrLink then
+    ApplyToButton(button, (C_Item.GetItemInfoInstant(itemIDOrLink)))
+  elseif quality == nil then
+    -- No item and no quality: the button was explicitly emptied.
+    ApplyToButton(button, nil)
+  else
+    -- A quality with no item reference: the caller did not say which item, so
+    -- fall back to whatever the button is bound to.
+    ApplyToButton(button, ResolveItemID(button))
+  end
+end
+
 local refreshQueued = false
 function ns.RefreshAll()
   if refreshQueued or not db then

@@ -44,8 +44,11 @@ local function OnRegionAdded(details)
   end
   button.expansionGlowHooked = true
 
-  hooksecurefunc(button, "SetItemButtonQuality", function(self)
-    ns.UpdateButton(self)
+  -- Go by what the button was told to show rather than by the slot it is bound
+  -- to. Baganator's stacked "empty slots" button keeps a real bag and slot but
+  -- draws nothing, so the slot is not a safe source here.
+  hooksecurefunc(button, "SetItemButtonQuality", function(self, quality, itemIDOrLink)
+    ns.UpdateButtonFromQuality(self, quality, itemIDOrLink)
   end)
 end
 

@@ -300,6 +300,29 @@ ns.RefreshAll()
 RunTimers()
 check("host-supplied button survives a refresh", ActiveTier(hostSupplied), "prev2")
 
+-- What SetItemButtonQuality was handed beats what the button is bound to,
+-- because a button is not always showing its own slot.
+local fromQuality = ButtonInBag(0, 91, 101) -- slot holds a prev1 item
+ns.UpdateButtonFromQuality(fromQuality, 3, "|Hitem:103|h[Other]|h")
+check("an explicit item wins over the bound slot", ActiveTier(fromQuality), "prev3")
+
+-- The case behind the empty-slot bug: Baganator binds its stacked "empty"
+-- button to a real slot that holds an item, then draws nothing there.
+local drawnEmpty = ButtonInBag(0, 92, 101)
+ns.UpdateButtonFromQuality(drawnEmpty, 3, "|Hitem:101|h")
+check("marked while showing an item", ActiveTier(drawnEmpty), "prev1")
+ns.UpdateButtonFromQuality(drawnEmpty, nil, nil)
+check("no quality and no item clears it", ActiveTier(drawnEmpty), nil)
+ns.RefreshAll()
+RunTimers()
+check("and it stays clear after a refresh", ActiveTier(drawnEmpty), nil)
+
+-- A quality with no item reference means the caller did not say which item, so
+-- the bound slot is still the best answer available.
+local qualityOnly = ButtonInBag(0, 93, 102)
+ns.UpdateButtonFromQuality(qualityOnly, 3, nil)
+check("quality without an item falls back to the slot", ActiveTier(qualityOnly), "prev2")
+
 -- Emptying a slot must not leave a marker that a later refresh can resurrect
 -- from the remembered item id.
 local emptied = ButtonInBag(0, 81, 102)

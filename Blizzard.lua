@@ -13,8 +13,8 @@ local _, ns = ...
 --
 -- ns.UpdateButton ignores buttons that are not bound to a container slot, which
 -- is what keeps merchant, loot, mail and paperdoll buttons out of scope.
-hooksecurefunc("SetItemButtonQuality", function(button)
+hooksecurefunc("SetItemButtonQuality", function(button, quality, itemIDOrLink)
   if button then
-    ns.UpdateButton(button)
+    ns.UpdateButtonFromQuality(button, quality, itemIDOrLink)
   end
 end)
