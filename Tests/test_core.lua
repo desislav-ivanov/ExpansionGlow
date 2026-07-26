@@ -300,6 +300,18 @@ ns.RefreshAll()
 RunTimers()
 check("host-supplied button survives a refresh", ActiveTier(hostSupplied), "prev2")
 
+-- Bag-slot buttons show an equipped bag, not the contents of a slot, so they
+-- must never be marked however the item arrives. Baganator flags every one of
+-- its bag slot button variants with isBag.
+local bagSlot = MockButton{isBag = true, bagID = 0, GetID = function() return 1 end}
+containerItems["0:1"] = 101
+ns.UpdateButton(bagSlot)
+check("bag slot button not marked from its slot", ActiveTier(bagSlot), nil)
+ns.UpdateButtonWithItem(bagSlot, 101)
+check("bag slot button not marked from a supplied item", ActiveTier(bagSlot), nil)
+ns.UpdateButtonFromQuality(bagSlot, 3, "|Hitem:101|h")
+check("bag slot button not marked from hook arguments", ActiveTier(bagSlot), nil)
+
 -- What SetItemButtonQuality was handed beats what the button is bound to,
 -- because a button is not always showing its own slot.
 local fromQuality = ButtonInBag(0, 91, 101) -- slot holds a prev1 item

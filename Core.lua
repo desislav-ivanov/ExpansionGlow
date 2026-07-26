@@ -358,6 +358,16 @@ local function ResolveItemID(button)
 end
 
 local function ApplyToButton(button, itemID)
+  -- A bag-slot button shows an equipped bag, not the contents of a slot, so it
+  -- is out of scope however the item reached us. Baganator flags every one of
+  -- its bag slot variants with isBag; Blizzard's own bag bar never sets the
+  -- bagID field, so it is already skipped by the slot lookup.
+  if button.isBag then
+    trackedButtons[button] = nil
+    HideMarker(button)
+    return
+  end
+
   if not itemID then
     -- Forget the item as well as hiding the marker. Leaving it remembered lets
     -- the next refresh fall back to it and repaint a slot that is now empty.

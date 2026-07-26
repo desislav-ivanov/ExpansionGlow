@@ -32,14 +32,19 @@ local function OnRegionAdded(details)
     return
   end
 
-  -- containerBag marks the equipped-bag icons on the bag bar. They are not
-  -- container slots and would resolve to whatever sits inside the bag they open.
+  local button = details.region
+
+  -- containerBag marks the equipped-bag icons on the bag bar. Those show a bag,
+  -- not the contents of a slot. Remember the decision: Baganator registers its
+  -- cached bag slots twice, tagged and then untagged, so skipping on the tag
+  -- alone lets the second registration hook the bag bar anyway.
   if HasTag(details.tags, "containerBag") then
+    button.expansionGlowSkip = true
     return
   end
 
-  local button = details.region
-  if button.expansionGlowHooked or not button.SetItemButtonQuality then
+  if button.expansionGlowSkip or button.expansionGlowHooked
+      or not button.SetItemButtonQuality then
     return
   end
   button.expansionGlowHooked = true

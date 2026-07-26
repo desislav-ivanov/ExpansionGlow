@@ -175,6 +175,15 @@ do
   -- Hooking the same button twice would double every update.
   listeners[1]({regionType = "ItemButton", region = later})
   check("Baganator marks a button as hooked", later.expansionGlowHooked, true)
+
+  -- Baganator registers its cached bag slots twice: once tagged containerBag
+  -- (ContainerSlots.lua:481) and once with no tags at all (:497). Skipping only
+  -- the tagged registration lets the second one hook the bag bar.
+  local bagBarButton = {SetItemButtonQuality = function() end, isBag = true}
+  listeners[1]({regionType = "ItemButton", region = bagBarButton, tags = {"containerBag"}})
+  listeners[1]({regionType = "ItemButton", region = bagBarButton})
+  check("Baganator keeps skipping a bag slot re-registered untagged",
+    methodHooks[bagBarButton], nil)
 end
 
 ClearHosts()
