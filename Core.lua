@@ -307,10 +307,10 @@ local trackedButtons = setmetatable({}, {__mode = "k"})
 
 -- Returns the itemID shown by an item button, or nil if it holds no item.
 --
--- The container slot is checked first because it is authoritative for anything
--- showing live inventory. Baganator's own item details are the fallback: they
--- are the only source in its cached views of other characters' bags, which are
--- not bound to a container slot at all.
+-- Container slots are checked before any addon's own bookkeeping, because the
+-- slot is authoritative for anything showing live inventory. Every bag addon
+-- names its slot fields differently, so this is the adapter surface: each host
+-- contributes the pair of fields it stores a bag and slot under.
 local function ResolveItemID(button)
   -- bagID and bankTabID are only set once a button has been bound to a
   -- container slot, so reading them is what filters out the merchant, loot,
@@ -328,6 +328,23 @@ local function ResolveItemID(button)
     return C_Container.GetContainerItemID(bankTabID, button.containerSlotID)
   end
 
+  -- ElvUI stores these capitalised on purpose: it avoids the lowercase names
+  -- because they taint through ContainerFrameItemButtonMixin:GetBagID.
+  if button.BagID and button.SlotID then
+    return C_Container.GetContainerItemID(button.BagID, button.SlotID)
+  end
+
+  -- ArkInventory keeps the Blizzard bag and slot on its own data table.
+  local arkData = button.ARK_Data
+  if arkData and arkData.blizzard_id and arkData.slot_id then
+    return C_Container.GetContainerItemID(arkData.blizzard_id, arkData.slot_id)
+  end
+
+  -- AdiBags.
+  if button.bag and button.slot then
+    return C_Container.GetContainerItemID(button.bag, button.slot)
+  end
+
   local bgr = button.BGR
   if bgr then
     if bgr.itemID then
@@ -340,18 +357,16 @@ local function ResolveItemID(button)
   return nil
 end
 
-function ns.UpdateButton(button)
-  if not db then
-    return
-  end
-
-  local itemID = ResolveItemID(button)
+local function ApplyToButton(button, itemID)
   if not itemID then
     HideMarker(button)
     return
   end
 
-  trackedButtons[button] = true
+  -- Remembered so a settings change can repaint this button later. Hosts whose
+  -- buttons carry a resolvable slot get re-resolved on refresh instead, since
+  -- the slot is authoritative and the remembered id can go stale.
+  trackedButtons[button] = itemID
 
   local settings, key
   if db.enabled then
@@ -365,6 +380,24 @@ function ns.UpdateButton(button)
   end
 end
 
+-- For hosts whose update hook hands over only the button.
+function ns.UpdateButton(button)
+  if not db then
+    return
+  end
+  ApplyToButton(button, ResolveItemID(button))
+end
+
+-- For hosts whose update hook already knows the item. Bagnon's cached views and
+-- BetterBags' item wrappers both report the item without the button being bound
+-- to a container slot we can read back.
+function ns.UpdateButtonWithItem(button, itemID)
+  if not db then
+    return
+  end
+  ApplyToButton(button, itemID)
+end
+
 local refreshQueued = false
 function ns.RefreshAll()
   if refreshQueued or not db then
@@ -373,8 +406,8 @@ function ns.RefreshAll()
   refreshQueued = true
   C_Timer.After(0, function()
     refreshQueued = false
-    for button in pairs(trackedButtons) do
-      ns.UpdateButton(button)
+    for button, rememberedID in pairs(trackedButtons) do
+      ApplyToButton(button, ResolveItemID(button) or rememberedID)
     end
   end)
 end

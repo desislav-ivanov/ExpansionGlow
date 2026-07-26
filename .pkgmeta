@@ -11,3 +11,4 @@ ignore:
     - .gitignore
     - README.md
     - ExpansionGlow-logo-512.png
+    - Tests

@@ -6,11 +6,17 @@
 ## X-License: All Rights Reserved
 ## X-Website: https://github.com/desislav-ivanov/ExpansionGlow
 ## SavedVariables: EXPANSIONGLOW_CONFIG
-## OptionalDeps: Baganator
+## OptionalDeps: Baganator, Bagnon, BetterBags, ArkInventory, ElvUI
 
 ## Category-enUS: Inventory
 
 Core.lua
 Options.lua
+
+# One file per bag UI. Each returns immediately if its host is absent.
 Blizzard.lua
 Baganator.lua
+Bagnon.lua
+BetterBags.lua
+ArkInventory.lua
+ElvUI.lua

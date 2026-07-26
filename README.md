@@ -86,8 +86,29 @@ expansion list and the outline sliders appear only when they do something.
 
 - the default bags, both separate and combined
 - the character bank and the warband bank
-- [Baganator](https://www.curseforge.com/wow/addons/baganator)
+- Baganator
+- Bagnon
+- BetterBags
+- ArkInventory
+- ElvUI's bags and bank
 - other bag addons that build on Blizzard's item buttons
+
+Each bag UI gets its own small file that does nothing unless that addon is
+loaded, so nothing is paid for a bag addon you do not use.
+
+AdiBags is not supported: it has been unmaintained for some time. If you use it
+and want it added, open an issue.
+
+## Running the tests
+
+The logic is covered by suites that stub the game API, so they run outside WoW
+with any Lua 5.1 interpreter:
+
+```sh
+cd Tests && ./run.sh
+```
+
+They are excluded from the packaged addon.
 
 ## Built to stay out of the way
 
