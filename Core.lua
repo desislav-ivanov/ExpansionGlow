@@ -417,10 +417,10 @@ function ns.Restyle()
   for button in pairs(trackedButtons) do
     local widgets = button.ExpansionGlow
     if widgets then
+      -- Only the colour keys need clearing. Border geometry does not:
+      -- LayoutBorder compares the button's stored size against the live
+      -- settings, so a size change is detected there on its own.
       widgets.tintKey, widgets.tintAlpha, widgets.borderKey = nil, nil, nil
-      if widgets.border then
-        widgets.border.outset, widgets.border.thickness = nil, nil
-      end
     end
   end
   ns.RefreshAll()

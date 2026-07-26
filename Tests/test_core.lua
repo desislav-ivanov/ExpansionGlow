@@ -343,6 +343,31 @@ check("disabled tier hides marker", ActiveTier(pending), nil)
 slash("prev2")
 RunTimers()
 
+-- Border geometry is cached per button, so check a size change actually reaches
+-- the textures rather than being swallowed by LayoutBorder's early return.
+slash("style border")
+RunTimers()
+local sized = ButtonInBag(0, 71, 102)
+ns.UpdateButton(sized)
+check("border starts at the default width", sized.ExpansionGlow.border.edges[1].height, 2)
+slash("thickness 5")
+RunTimers()
+check("thickness change reaches the edges", sized.ExpansionGlow.border.edges[1].height, 5)
+slash("outset 4")
+RunTimers()
+check("outset change reaches the frame anchors",
+  sized.ExpansionGlow.border.points[1][4], -4)
+
+-- Border style must work in expansion mode too, not just with the age tiers.
+slash("mode expansion")
+RunTimers()
+ns.UpdateButton(sized)
+check("border style honours expansion mode", ActiveTier(sized), "x9")
+slash("mode age")
+RunTimers()
+slash("style tint")
+RunTimers()
+
 slash("thickness 4")
 RunTimers()
 check("thickness setting stored", ns.db.thickness, 4)
@@ -351,10 +376,16 @@ check("out-of-range thickness rejected", ns.db.thickness, 4)
 slash("prev1 zzz")
 check("bad hex rejected", near(ns.db.tiers.prev1.color[1]), near(0.20))
 
-local opened = false
-ns.OpenOptions = function() opened = true end
+local opened = 0
+ns.OpenOptions = function() opened = opened + 1 end
 slash("")
-check("bare command opens the options panel", opened, true)
+slash("config")
+slash("options")
+check("bare command and both aliases open the panel", opened, 3)
+
+output = {}
+slash("nonsense")
+check("unknown command prints the command list", #output > 5, true)
 
 output = {}
 slash("status")
@@ -453,6 +484,21 @@ LE_EXPANSION_LEVEL_CURRENT = 12
 local shifted = ButtonInBag(0, 31, 101) -- expacID 10, was prev1 at level 11
 ns2.UpdateButton(shifted)
 check("cached item re-tiers after new expansion", ActiveTier(shifted), "prev2")
+
+-- The expansion that just became "past" must pick up a colour on the next
+-- load, which is what makes the per-expansion list extend itself.
+_G["EXPANSION_NAME12"] = "The Next One"
+local ns3 = {}
+created = {}
+assert(loadfile(ADDON_DIR .. "Core.lua"))("ExpansionGlow", ns3)
+local ef3 = created[#created]
+ef3.onEvent(ef3, "ADDON_LOADED", "ExpansionGlow")
+check("newly past expansion gains a colour", ns3.db.expansions[11] ~= nil, true)
+check("newly past expansion is listed", ns3.PastExpansions()[1], 11)
+check("the new current expansion gets none", ns3.db.expansions[12], nil)
+check("existing expansion colours are left alone",
+  near(ns3.db.expansions[9].color[1]), near(ns2.db.expansions[9].color[1]))
+
 LE_EXPANSION_LEVEL_CURRENT = 11
 
 -- purge empties the cache synchronously, then the queued refresh re-reads

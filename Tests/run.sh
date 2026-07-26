@@ -11,7 +11,7 @@ if ! command -v "$LUA" >/dev/null; then
 fi
 
 status=0
-for suite in test_core.lua test_options.lua; do
+for suite in test_core.lua test_options.lua test_hosts.lua; do
   echo "=== $suite ==="
   "$LUA" "$suite" || status=1
 done
