@@ -359,6 +359,9 @@ end
 
 local function ApplyToButton(button, itemID)
   if not itemID then
+    -- Forget the item as well as hiding the marker. Leaving it remembered lets
+    -- the next refresh fall back to it and repaint a slot that is now empty.
+    trackedButtons[button] = nil
     HideMarker(button)
     return
   end

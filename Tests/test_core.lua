@@ -300,6 +300,26 @@ ns.RefreshAll()
 RunTimers()
 check("host-supplied button survives a refresh", ActiveTier(hostSupplied), "prev2")
 
+-- Emptying a slot must not leave a marker that a later refresh can resurrect
+-- from the remembered item id.
+local emptied = ButtonInBag(0, 81, 102)
+ns.UpdateButton(emptied)
+check("marked while occupied", ActiveTier(emptied), "prev2")
+containerItems["0:81"] = nil
+ns.UpdateButton(emptied)
+check("cleared when the slot empties", ActiveTier(emptied), nil)
+ns.RefreshAll()
+RunTimers()
+check("stays clear after a refresh", ActiveTier(emptied), nil)
+
+-- Same for a host-supplied button, which has no slot to re-read.
+local hostEmptied = MockButton{}
+ns.UpdateButtonWithItem(hostEmptied, 102)
+ns.UpdateButtonWithItem(hostEmptied, nil)
+ns.RefreshAll()
+RunTimers()
+check("host-supplied button stays clear after a refresh", ActiveTier(hostEmptied), nil)
+
 -- Container slot wins over a stale remembered id.
 local stale = ButtonInBag(0, 9, 101)
 stale.BGR = {itemID = 104}
